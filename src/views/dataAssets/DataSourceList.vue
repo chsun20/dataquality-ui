@@ -99,8 +99,15 @@ export default {
     getList() {
       this.loading = true;
       listHiveMetastore().then(response => {
-        this.hiveMetastoreList = response.default;
-        this.total = response.default.length;
+        this.hiveMetastoreList = []
+        for(let value in response) {
+          if (response.hasOwnProperty(value)) {
+            for(let item of response[value]){
+              this.hiveMetastoreList.push(item)
+              this.total = this.total + item.length
+            }
+          }
+        }
         this.loading = false;
       });
     },

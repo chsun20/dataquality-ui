@@ -10,9 +10,9 @@ export function listRule(query) {
 }
 
 // 查询规则详细
-export function getRule(id) {
+export function getRule(ruleId) {
   return request({
-    url: '/dqservice/rule/' + id,
+    url: '/dqservice/rule/' + ruleId,
     method: 'get'
   })
 }
@@ -36,9 +36,9 @@ export function updateRule(data) {
 }
 
 // 删除规则
-export function delRule(id) {
+export function delRule(ruleId) {
   return request({
-    url: '/dqservice/rule/' + id,
+    url: '/dqservice/rule/' + ruleId,
     method: 'delete'
   })
 }
