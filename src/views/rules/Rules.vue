@@ -147,13 +147,11 @@
       <el-table-column type="selection" width="55" align="center" />
       <el-table-column label="规则id" align="center" prop="ruleId" />
       <el-table-column label="用户id" align="center" prop="userId" />
-      <el-table-column label="kie_base_name" align="center" prop="kieBaseName" />
-      <el-table-column label="kie_package_name" align="center" prop="kiePackageName" />
       <el-table-column label="规则内容" align="center" prop="ruleContext" />
       <el-table-column label="数据库名" align="center" prop="dbName" />
       <el-table-column label="表名" align="center" prop="tableName" />
       <el-table-column label="字段名" align="center" prop="columnName" />
-      <el-table-column label="规则类型" align="center" prop="type" />
+      <el-table-column label="规则类型" align="center" prop="typeName" />
       <el-table-column label="创建时间" align="center" prop="createTime" width="180">
         <template slot-scope="scope">
           <span>{{ parseTime(scope.row.createTime, '{y}-{m}-{d}') }}</span>
@@ -196,12 +194,6 @@
     <!-- 添加自定义规则对话框 -->
     <el-dialog :title="title" :visible.sync="openDIY" width="500px" append-to-body>
       <el-form ref="form" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="kieBase" prop="kieBaseName">
-          <el-input v-model="form.kieBaseName" placeholder="请输入kie_base_name" />
-        </el-form-item>
-        <el-form-item label="kiePackage" prop="kiePackageName">
-          <el-input v-model="form.kiePackageName" placeholder="请输入kie_package_name" />
-        </el-form-item>
         <el-form-item label="规则地址" prop="ruleContext">
           <el-input v-model="form.ruleContext" type="textarea" placeholder="请输入地址" />
         </el-form-item>
@@ -217,12 +209,6 @@
       <el-form ref="form" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="用户id" prop="userId">
           <el-input v-model="form.userId" placeholder="请输入用户id" />
-        </el-form-item>
-        <el-form-item label="kie_base_name" prop="kieBaseName">
-          <el-input v-model="form.kieBaseName" placeholder="请输入kie_base_name" />
-        </el-form-item>
-        <el-form-item label="kie_package_name" prop="kiePackageName">
-          <el-input v-model="form.kiePackageName" placeholder="请输入kie_package_name" />
         </el-form-item>
         <el-form-item label="规则内容" prop="ruleContext">
           <el-input v-model="form.ruleContext" type="textarea" placeholder="请输入内容" />

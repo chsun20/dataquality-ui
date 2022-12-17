@@ -3,7 +3,7 @@
   <el-form :model="droolsRule" :rules="rules" :label-position="'right'">
     <el-form-item label="规则名称" prop="ruleName">
       <el-col :span="8">
-        <el-input v-model="droolsRule.ruleName" placeholder="请输入规则名称"/>
+        <el-input v-model="droolsRule.ruleName" placeholder="只支持英文与数字"/>
       </el-col>
     </el-form-item>
     <el-form-item label="规则描述">
@@ -13,7 +13,7 @@
     </el-form-item>
     <el-form-item label="规则类型">
       <el-col :span="8">
-        <el-select v-model="droolsRule.ruleType" :disabled="true">
+        <el-select v-model="droolsRule.typeName" :disabled="true">
           <el-option
             v-for="item in ruleTypes"
             :key="item.value"
@@ -25,12 +25,12 @@
     </el-form-item>
     <el-form-item label="数据源">
       <el-col :span="8">
-        <el-input v-model="droolsRule.table" :disabled="true"/>
+        <el-input v-model="droolsRule.tableName" :disabled="true"/>
       </el-col>
     </el-form-item>
     <el-form-item label="创建者">
       <el-col :span="8">
-        <el-input v-model="droolsRule.owner" :disabled="true"/>
+        <el-input v-model="droolsRule.userName" :disabled="true"/>
       </el-col>
     </el-form-item>
     <el-form-item>
@@ -61,9 +61,8 @@ export default {
   },
   created() {
     this.droolsRule.userName = this.$store.state.user.name
-    this.droolsRule.userId = this.$store.state.user.id
-    this.droolsRule.ruleType = '单表规则'
-    this.droolsRule.ruleTypeCode = '1'
+    this.droolsRule.typeName = '单表规则'
+    this.droolsRule.typeCode = '1'
   },
   methods: {
     commitConfiguration() {

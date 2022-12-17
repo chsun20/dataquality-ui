@@ -91,7 +91,7 @@ export default {
       if(this.currentTreeItem === item) return
       this.currentTreeItem = item
       if(node.isLeaf) {
-        this.droolsRule.table = node.label
+        this.droolsRule.tableName = node.label
         this.droolsRule.cols = []
         this.queryParams.db = node.parent.label
         this.queryParams.table = node.label
@@ -102,7 +102,7 @@ export default {
           this.loading = false;
         });
       }else {
-        this.droolsRule.db = node.label
+        this.droolsRule.dbName = node.label
       }
     },
     // 多选表格选择事件，更新父组件cols属性
