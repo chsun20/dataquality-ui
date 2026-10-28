@@ -35,10 +35,28 @@ export function updateRule(data) {
   })
 }
 
+// 校验手写 DRL 语法（只传 rule ... end 主体，后端补全头部后编译）
+export function validateRule(data) {
+  return request({
+    url: '/dqservice/rule/validate',
+    method: 'post',
+    data: data
+  })
+}
+
 // 删除规则
 export function delRule(ruleId) {
   return request({
     url: '/dqservice/rule/' + ruleId,
     method: 'delete'
+  })
+}
+
+// 执行规则，返回违规明细与通过率
+export function executeRule(ruleId, params) {
+  return request({
+    url: '/dqservice/execute/' + ruleId,
+    method: 'post',
+    params: params
   })
 }

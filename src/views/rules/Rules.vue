@@ -1,34 +1,18 @@
 <template>
   <div class="app-container">
     <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="68px">
-      <el-form-item label="规则id" prop="ruleId">
+      <el-form-item label="规则名称" prop="ruleName">
         <el-input
-          v-model="queryParams.ruleId"
-          placeholder="请输入规则id"
+          v-model="queryParams.ruleName"
+          placeholder="请输入规则名称"
           clearable
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="用户id" prop="userId">
+      <el-form-item label="用户名" prop="userName">
         <el-input
-          v-model="queryParams.userId"
-          placeholder="请输入用户id"
-          clearable
-          @keyup.enter.native="handleQuery"
-        />
-      </el-form-item>
-      <el-form-item label="kie_base_name" prop="kieBaseName">
-        <el-input
-          v-model="queryParams.kieBaseName"
-          placeholder="请输入kie_base_name"
-          clearable
-          @keyup.enter.native="handleQuery"
-        />
-      </el-form-item>
-      <el-form-item label="kie_package_name" prop="kiePackageName">
-        <el-input
-          v-model="queryParams.kiePackageName"
-          placeholder="请输入kie_package_name"
+          v-model="queryParams.userName"
+          placeholder="请输入用户名"
           clearable
           @keyup.enter.native="handleQuery"
         />
@@ -72,14 +56,6 @@
                         value-format="yyyy-MM-dd"
                         placeholder="请选择更新时间">
         </el-date-picker>
-      </el-form-item>
-      <el-form-item label="删除位" prop="del">
-        <el-input
-          v-model="queryParams.del"
-          placeholder="请输入删除位"
-          clearable
-          @keyup.enter.native="handleQuery"
-        />
       </el-form-item>
       <el-form-item>
         <el-button type="primary" icon="el-icon-search" size="mini" @click="handleQuery">搜索</el-button>
@@ -144,27 +120,36 @@
     </el-row>
 
     <el-table v-loading="loading" :data="ruleList" @selection-change="handleSelectionChange">
-      <el-table-column type="selection" width="55" align="center" />
-      <el-table-column label="规则id" align="center" prop="ruleId" />
-      <el-table-column label="用户id" align="center" prop="userId" />
-      <el-table-column label="规则内容" align="center" prop="ruleContext" />
-      <el-table-column label="数据库名" align="center" prop="dbName" />
-      <el-table-column label="表名" align="center" prop="tableName" />
-      <el-table-column label="字段名" align="center" prop="columnName" />
-      <el-table-column label="规则类型" align="center" prop="typeName" />
-      <el-table-column label="创建时间" align="center" prop="createTime" width="180">
+      <el-table-column type="selection" width="50" align="center" />
+      <el-table-column label="规则id" align="center" prop="ruleId" width="60" />
+      <el-table-column label="规则名称" align="center" prop="ruleName" min-width="150" show-overflow-tooltip />
+      <el-table-column label="规则类型" align="center" prop="typeName" width="110" />
+      <el-table-column label="用户id" align="center" prop="userId" width="80" />
+      <el-table-column label="用户名" align="center" prop="userName" width="110" show-overflow-tooltip />
+      <el-table-column label="创建时间" align="center" prop="createTime" width="100">
         <template slot-scope="scope">
-          <span>{{ parseTime(scope.row.createTime, '{y}-{m}-{d}') }}</span>
+          <span>{{ scope.row.createTime ? parseTime(scope.row.createTime, '{y}-{m}-{d}') : '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="更新时间" align="center" prop="updateTime" width="180">
+      <el-table-column label="更新时间" align="center" prop="updateTime" width="145">
         <template slot-scope="scope">
-          <span>{{ parseTime(scope.row.updateTime, '{y}-{m}-{d}') }}</span>
+          <span>{{ scope.row.updateTime ? parseTime(scope.row.updateTime, '{y}-{m}-{d} {h}:{i}') : '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="删除位" align="center" prop="del" />
-      <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
+      <el-table-column label="操作" align="center" class-name="small-padding fixed-width" width="240" fixed="right">
         <template slot-scope="scope">
+          <el-button
+            size="mini"
+            type="text"
+            icon="el-icon-video-play"
+            @click="handleExecute(scope.row)"
+          >执行</el-button>
+          <el-button
+            size="mini"
+            type="text"
+            icon="el-icon-document"
+            @click="handleDetail(scope.row)"
+          >详情</el-button>
           <el-button
             size="mini"
             type="text"
@@ -191,51 +176,163 @@
       @pagination="getList"
     />
 
-    <!-- 添加自定义规则对话框 -->
-    <el-dialog :title="title" :visible.sync="openDIY" width="500px" append-to-body>
-      <el-form ref="form" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="规则地址" prop="ruleContext">
-          <el-input v-model="form.ruleContext" type="textarea" placeholder="请输入地址" />
+    <!-- 新增自定义规则对话框：手写 DRL 主体，保存前做语法检查 -->
+    <el-dialog :title="customTitle" :visible.sync="openDIY" width="820px" append-to-body>
+      <el-form ref="customForm" :model="customForm" :rules="customRules" label-width="90px">
+        <el-form-item label="规则名称" prop="ruleName">
+          <el-input v-model="customForm.ruleName" placeholder="请输入规则名称" />
+        </el-form-item>
+        <el-row>
+          <el-col :span="12">
+            <el-form-item label="数据库名" prop="dbName">
+              <el-input v-model="customForm.dbName" placeholder="请输入数据库名" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="表名" prop="tableName">
+              <el-input v-model="customForm.tableName" placeholder="请输入数据表名" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="规则内容" prop="ruleBody">
+          <el-input v-model="customForm.ruleBody" type="textarea" :rows="16" class="drl-editor"
+                    placeholder="请输入 rule ... end 主体部分" />
+          <div class="form-tip">只需编写 rule ... end 主体，package / import / global 由系统自动补全；then 中需通过 violations.add(...) 写出违规记录。</div>
         </el-form-item>
       </el-form>
       <div slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="submitDIYForm">确 定</el-button>
+        <el-button :loading="checkLoading" icon="el-icon-check" @click="handleCheckDrl(customForm.ruleBody)">语法检查</el-button>
+        <el-button type="primary" :loading="submitLoading" @click="submitCustomForm">确 定</el-button>
         <el-button @click="openDIY = false">取 消</el-button>
       </div>
     </el-dialog>
 
-    <!-- 添加或修改规则对话框 -->
-    <el-dialog :title="title" :visible.sync="open" width="500px" append-to-body>
-      <el-form ref="form" :model="form" :rules="rules" label-width="80px">
-        <el-form-item label="用户id" prop="userId">
-          <el-input v-model="form.userId" placeholder="请输入用户id" />
+    <!-- 修改规则对话框：只编辑 DRL 主体，改过内容即转为自定义规则 -->
+    <el-dialog title="修改规则" :visible.sync="open" width="820px" append-to-body>
+      <el-form ref="editForm" :model="editForm" :rules="editRules" label-width="90px">
+        <el-form-item label="规则名称" prop="ruleName">
+          <el-input v-model="editForm.ruleName" placeholder="请输入规则名称" />
         </el-form-item>
-        <el-form-item label="规则内容" prop="ruleContext">
-          <el-input v-model="form.ruleContext" type="textarea" placeholder="请输入内容" />
+        <el-form-item label="所属数据表">
+          <span class="form-text">{{ (editForm.dbName || '-') + ' . ' + (editForm.tableName || '-') }}</span>
+          <span class="form-text form-text-sub">检测字段：{{ editForm.columnName || '-' }}</span>
         </el-form-item>
-        <el-form-item label="数据库名" prop="dbName">
-          <el-input v-model="form.dbName" placeholder="请输入数据库名" />
-        </el-form-item>
-        <el-form-item label="表名" prop="tableName">
-          <el-input v-model="form.tableName" placeholder="请输入表名" />
-        </el-form-item>
-        <el-form-item label="字段名" prop="columnName">
-          <el-input v-model="form.columnName" placeholder="请输入字段名" />
-        </el-form-item>
-        <el-form-item label="删除位" prop="del">
-          <el-input v-model="form.del" placeholder="请输入删除位" />
+        <el-form-item label="规则内容" prop="ruleBody">
+          <el-input v-model="editForm.ruleBody" type="textarea" :rows="16" class="drl-editor" />
+          <div class="form-tip">仅编辑 rule ... end 主体；内容一旦改动，规则类型将变更为「自定义规则」。</div>
         </el-form-item>
       </el-form>
       <div slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="submitForm">确 定</el-button>
+        <el-button :loading="checkLoading" icon="el-icon-check" @click="handleCheckDrl(editForm.ruleBody)">语法检查</el-button>
+        <el-button type="primary" :loading="submitLoading" @click="submitEditForm">确 定</el-button>
         <el-button @click="cancel">取 消</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- 规则详情对话框：只读展示 DRL 主体 -->
+    <el-dialog title="规则详情" :visible.sync="detailOpen" width="880px" append-to-body>
+      <el-descriptions :column="2" border size="small">
+        <el-descriptions-item label="规则id">{{ detailRule.ruleId || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="规则名称">{{ detailRule.ruleName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="规则类型">{{ detailRule.typeName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="检测字段">{{ detailRule.columnName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="数据库名">{{ detailRule.dbName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="表名">{{ detailRule.tableName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="创建时间">{{ parseTime(detailRule.createTime, '{y}-{m}-{d} {h}:{i}') }}</el-descriptions-item>
+        <el-descriptions-item label="更新时间">{{ parseTime(detailRule.updateTime, '{y}-{m}-{d} {h}:{i}') }}</el-descriptions-item>
+      </el-descriptions>
+      <div class="drl-detail-title">规则内容（DRL 主体）</div>
+      <pre class="drl-pre">{{ detailRule.ruleBody }}</pre>
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="detailOpen = false">关 闭</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- 规则执行结果对话框 -->
+    <el-dialog title="质量检测结果" :visible.sync="execOpen" width="960px" append-to-body>
+      <div v-loading="execLoading" element-loading-text="规则执行中...">
+        <div class="exec-meta">
+          <span>规则：{{ execResult.ruleName }}</span>
+          <span>数据表：{{ (execResult.dbName ? execResult.dbName + '.' : '') + (execResult.tableName || '-') }}</span>
+          <span class="exec-limit">
+            扫描行数：
+            <el-select v-model="execLimit" size="mini" style="width: 110px" @change="runExecute">
+              <el-option :value="100" label="100 行" />
+              <el-option :value="1000" label="1000 行" />
+              <el-option :value="5000" label="5000 行" />
+              <el-option :value="10000" label="10000 行" />
+            </el-select>
+          </span>
+        </div>
+
+        <div class="exec-summary">
+          <div class="exec-card">
+            <div class="exec-label">扫描行数</div>
+            <div class="exec-value">{{ execResult.totalRows || 0 }}</div>
+          </div>
+          <div class="exec-card">
+            <div class="exec-label">违规条数</div>
+            <div class="exec-value exec-danger">{{ execResult.violationCount || 0 }}</div>
+          </div>
+          <div class="exec-card">
+            <div class="exec-label">命中行数</div>
+            <div class="exec-value">{{ execResult.violationRows || 0 }}</div>
+          </div>
+          <div class="exec-card">
+            <div class="exec-label">通过率</div>
+            <div class="exec-value">
+              <el-tag :type="passRateTagType" size="medium">{{ passRateText }}%</el-tag>
+            </div>
+          </div>
+        </div>
+
+        <div class="exec-section">
+          <span class="exec-section-title">字段违规分布：</span>
+          <el-tag
+            v-for="item in execResult.fieldStats"
+            :key="item.field"
+            type="danger"
+            size="small"
+            class="exec-field-tag"
+          >{{ item.field }} · {{ item.count }} 条</el-tag>
+          <span v-if="!execResult.fieldStats || execResult.fieldStats.length === 0" class="exec-empty">无违规字段</span>
+        </div>
+
+        <div class="exec-section-title exec-detail-title">违规明细（{{ execResult.violationCount || 0 }} 条）</div>
+        <el-table :data="execResult.violations" size="mini" border max-height="380">
+          <el-table-column type="expand">
+            <template slot-scope="props">
+              <el-form label-position="left" inline class="exec-row-detail">
+                <el-form-item v-for="(value, key) in props.row.row" :key="key" :label="key">
+                  <span>{{ value === null ? 'NULL' : value }}</span>
+                </el-form-item>
+              </el-form>
+            </template>
+          </el-table-column>
+          <el-table-column label="行号" prop="rowId" width="70" align="center" />
+          <el-table-column label="记录ID" width="90" align="center">
+            <template slot-scope="scope">{{ scope.row.row ? scope.row.row.id : '-' }}</template>
+          </el-table-column>
+          <el-table-column label="违规字段" prop="field" width="160" align="center" />
+          <el-table-column label="命中规则" prop="rule" align="center" />
+          <el-table-column label="字段值" width="110" align="center">
+            <template slot-scope="scope">
+              <el-tag type="danger" size="mini"
+                      v-if="scope.row.row && scope.row.row[scope.row.field] === null">NULL</el-tag>
+              <span v-else>{{ scope.row.row ? scope.row.row[scope.row.field] : '' }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="execOpen = false">关 闭</el-button>
       </div>
     </el-dialog>
   </div>
 </template>
 
 <script>
-import { listRule, getRule, delRule, addRule, updateRule } from "@/api/dqservice/rule";
+import { listRule, getRule, delRule, addRule, updateRule, executeRule, validateRule } from "@/api/dqservice/rule";
 
 export default {
   name: "Rule",
@@ -255,33 +352,56 @@ export default {
       total: 0,
       // 规则表格数据
       ruleList: [],
-      // 弹出层标题
-      title: "",
-      // 是否显示弹出层
+      // 新增自定义规则弹窗
       openDIY: false,
+      customTitle: "",
+      customForm: { ruleName: null, dbName: null, tableName: null, ruleBody: "" },
+      customRules: {
+        ruleName: [{ required: true, message: "请输入规则名称", trigger: "blur" }],
+        tableName: [{ required: true, message: "请输入数据表名", trigger: "blur" }],
+        ruleBody: [{ required: true, message: "请输入规则内容", trigger: "blur" }]
+      },
+      // 修改规则弹窗
+      open: false,
+      editForm: { ruleId: null, ruleName: null, dbName: null, tableName: null, columnName: null, ruleBody: "" },
+      editRules: {
+        ruleName: [{ required: true, message: "请输入规则名称", trigger: "blur" }],
+        ruleBody: [{ required: true, message: "请输入规则内容", trigger: "blur" }]
+      },
+      // 规则详情弹窗
+      detailOpen: false,
+      detailRule: {},
+      // 提交与语法检查状态
+      submitLoading: false,
+      checkLoading: false,
+      // 执行结果弹窗
+      execOpen: false,
+      execLoading: false,
+      // 当前执行的规则与扫描行数（切换行数后重新执行会新增一条执行记录）
+      execRuleId: null,
+      execLimit: 1000,
+      execResult: { violations: [], fieldStats: [] },
       // 查询参数
       queryParams: {
         pageNum: 1,
         pageSize: 10,
-        ruleId: null,
-        userId: null,
-        kieBaseName: null,
-        kiePackageName: null,
-        ruleContext: null,
-        dbName: null,
-        tableName: null,
-        columnName: null,
-        type: null,
+        ruleName: null,
+        userName: null,
         createTime: null,
-        updateTime: null,
-        del: null
-      },
-      // 表单参数
-      form: {},
-      // 表单校验
-      rules: {
+        updateTime: null
       }
     };
+  },
+  computed: {
+    passRateText() {
+      return Number(this.execResult.passRate || 0).toFixed(1)
+    },
+    passRateTagType() {
+      const rate = Number(this.execResult.passRate || 0)
+      if (rate >= 90) return 'success'
+      if (rate >= 60) return 'warning'
+      return 'danger'
+    }
   },
   created() {
     this.getList();
@@ -299,25 +419,13 @@ export default {
     // 取消按钮
     cancel() {
       this.open = false;
-      this.reset();
+      this.editForm = { ruleId: null, ruleName: null, dbName: null, tableName: null, columnName: null, ruleBody: "" };
     },
-    // 表单重置
-    reset() {
-      this.form = {
-        ruleId: null,
-        userId: null,
-        kieBaseName: null,
-        kiePackageName: null,
-        ruleContext: null,
-        dbName: null,
-        tableName: null,
-        columnName: null,
-        type: null,
-        createTime: null,
-        updateTime: null,
-        del: null
-      };
-      this.resetForm("form");
+    /** 取 DRL 主体（rule ... end），去掉 package / import / global 头部 */
+    drlBody(drl) {
+      if (!drl) return "";
+      const match = /(^|\n)[ \t]*rule[ \t]+"/.exec(drl);
+      return (match ? drl.slice(match.index) : drl).trim();
     },
     /** 搜索按钮操作 */
     handleQuery() {
@@ -335,59 +443,120 @@ export default {
       this.single = selection.length!==1
       this.multiple = !selection.length
     },
-    /** 新增按钮操作 */
+    /** 执行规则并展示质量检测结果 */
+    handleExecute(row) {
+      this.execRuleId = row.ruleId
+      this.execResult = {
+        ruleName: row.ruleName,
+        dbName: row.dbName,
+        tableName: row.tableName,
+        violations: [],
+        fieldStats: []
+      }
+      this.execOpen = true
+      this.runExecute()
+    },
+    /** 按当前扫描行数执行（切换行数时也会重跑） */
+    runExecute() {
+      if (!this.execRuleId) return
+      this.execLoading = true
+      executeRule(this.execRuleId, { limit: this.execLimit }).then(response => {
+        this.execResult = response.data
+        this.execLoading = false
+      }).catch(() => {
+        this.execLoading = false
+      })
+    },
+    /** 新增自定义规则：打开 DRL 编辑弹窗 */
     handleAdd() {
-      this.reset();
+      this.customForm = { ruleName: null, dbName: null, tableName: null, ruleBody: "" };
+      this.customTitle = "新增自定义规则";
       this.openDIY = true;
-      this.title = "添加自定义规则";
+      this.$nextTick(() => this.$refs.customForm && this.$refs.customForm.clearValidate());
     },
-    /** 新增按钮操作 */
+    /** 从规则模板中创建：跳转到规则制作向导，由向导完成选表、选模板、填参数 */
     handleAdd2() {
-      this.reset();
-      this.open2 = true;
-      this.title = "添加规则";
+      this.$router.push({ path: '/dq/ruleMaking' })
     },
-    /** 修改按钮操作 */
+    /** 修改：只回显 DRL 主体，不重建规则 */
     handleUpdate(row) {
-      this.reset();
       const ruleId = row.ruleId || this.ids
       getRule(ruleId).then(response => {
-        this.form = response.data;
+        const rule = response.data || {};
+        this.editForm = {
+          ruleId: rule.ruleId,
+          ruleName: rule.ruleName,
+          dbName: rule.dbName,
+          tableName: rule.tableName,
+          columnName: rule.columnName,
+          ruleBody: this.drlBody(rule.ruleContext)
+        };
         this.open = true;
-        this.title = "修改规则";
+        this.$nextTick(() => this.$refs.editForm && this.$refs.editForm.clearValidate());
       });
     },
-    /** 提交按钮 */
-    submitForm() {
-      this.$refs["form"].validate(valid => {
-        if (valid) {
-          if (this.form.ruleId != null) {
-            updateRule(this.form).then(response => {
-              this.$modal.msgSuccess("修改成功");
-              this.open = false;
-              this.getList();
-            });
-          } else {
-            addRule(this.form).then(response => {
-              this.$modal.msgSuccess("新增成功");
-              this.open = false;
-              this.getList();
-            });
-          }
-        }
+    /** 详情：只读展示 DRL 主体 */
+    handleDetail(row) {
+      this.detailRule = Object.assign({}, row, { ruleBody: this.drlBody(row.ruleContext) });
+      this.detailOpen = true;
+    },
+    /** 语法检查：主体交给后端补全头部后编译 */
+    handleCheckDrl(body) {
+      if (!body || !body.trim()) {
+        this.$modal.msgWarning("请先输入规则内容");
+        return Promise.resolve(false);
+      }
+      this.checkLoading = true;
+      return validateRule({ ruleContext: body })
+        .then(() => {
+          this.$modal.msgSuccess("语法检查通过，规则可正常编译");
+          return true;
+        })
+        .catch(() => false)
+        .finally(() => {
+          this.checkLoading = false;
+        });
+    },
+    /** 提交修改：内容改动后由后端将规则类型改为自定义规则 */
+    submitEditForm() {
+      this.$refs["editForm"].validate(valid => {
+        if (!valid) return;
+        this.submitLoading = true;
+        updateRule({
+          ruleId: this.editForm.ruleId,
+          ruleName: this.editForm.ruleName,
+          ruleContext: this.editForm.ruleBody
+        }).then(() => {
+          this.$modal.msgSuccess("修改成功");
+          this.open = false;
+          this.getList();
+        }).catch(() => {}).finally(() => {
+          this.submitLoading = false;
+        });
       });
     },
-    /** 提交按钮 */
-    submitDIYForm() {
-      this.form.type = 1;
-      this.$refs["form"].validate(valid => {
-        if (valid) {
-          addRule(this.form).then(response => {
+    /** 提交自定义规则：先做语法检查，通过后再保存 */
+    submitCustomForm() {
+      this.$refs["customForm"].validate(valid => {
+        if (!valid) return;
+        this.submitLoading = true;
+        validateRule({ ruleContext: this.customForm.ruleBody })
+          .then(() => addRule({
+            ruleName: this.customForm.ruleName,
+            dbName: this.customForm.dbName,
+            tableName: this.customForm.tableName,
+            ruleContext: this.customForm.ruleBody,
+            templateCode: "custom"
+          }))
+          .then(() => {
             this.$modal.msgSuccess("新增成功");
-            this.open = false;
+            this.openDIY = false;
             this.getList();
+          })
+          .catch(() => {})
+          .finally(() => {
+            this.submitLoading = false;
           });
-        }
       });
     },
     /** 删除按钮操作 */
@@ -409,3 +578,113 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 18px;
+}
+.form-text {
+  font-size: 13px;
+  color: #606266;
+}
+.form-text-sub {
+  margin-left: 24px;
+}
+/* 规则详情中的 DRL 主体 */
+.drl-editor >>> .el-textarea__inner {
+  font-family: Consolas, Monaco, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 18px;
+}
+.drl-detail-title {
+  margin: 14px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+}
+.drl-pre {
+  max-height: 380px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  background: #f5f7fa;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  white-space: pre;
+  font-family: Consolas, Monaco, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 18px;
+  color: #303133;
+}
+.exec-meta {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #606266;
+}
+.exec-meta span + span {
+  margin-left: 24px;
+}
+.exec-limit {
+  display: inline-flex;
+  align-items: center;
+}
+.exec-summary {
+  display: flex;
+  margin-bottom: 16px;
+}
+.exec-card {
+  flex: 1;
+  margin-right: 12px;
+  padding: 12px 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  text-align: center;
+}
+.exec-card:last-child {
+  margin-right: 0;
+}
+.exec-label {
+  font-size: 12px;
+  color: #909399;
+}
+.exec-value {
+  margin-top: 8px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #303133;
+}
+.exec-danger {
+  color: #f56c6c;
+}
+.exec-section {
+  margin-bottom: 12px;
+}
+.exec-section-title {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+}
+.exec-detail-title {
+  display: block;
+  margin-bottom: 8px;
+}
+.exec-field-tag {
+  margin-right: 8px;
+  margin-left: 4px;
+  margin-bottom: 6px;
+}
+.exec-empty {
+  font-size: 12px;
+  color: #909399;
+}
+.exec-row-detail {
+  padding: 0 16px;
+}
+.exec-row-detail .el-form-item {
+  margin-bottom: 0;
+  margin-right: 16px;
+}
+</style>
