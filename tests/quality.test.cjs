@@ -37,9 +37,12 @@ function loadComponent(file, dependencies = {}) {
     '@/api/dqservice/report': {},
     '@/api/dqservice/ruleTemplate': {},
     '@/api/dqservice/dataSource': {},
+    '@/api/dqservice/task': {},
+    '@/components/Crontab': {},
     '@/utils/permission': { checkPermi: () => true },
     './report/EvaluationDetail': {},
     './EvaluationDetail': {},
+    '../report/EvaluationDetail': {},
     '@/views/rules/accuracy/DataSelect': {},
     '@/views/rules/accuracy/RuleSelect': {},
     '@/views/rules/accuracy/Configuration': {},
@@ -193,9 +196,37 @@ for (const [status, expected, color] of [['FAILED', '执行失败', 'danger'], [
   })
 }
 
-for (const file of ['dataAssets/DataSourceList.vue', 'rules/accuracy/DataSelect.vue', 'rules/accuracy/index.vue', 'rules/accuracy/Configuration.vue', 'rules/report/EvaluationDetail.vue']) {
+for (const file of ['dataAssets/DataSourceList.vue', 'rules/accuracy/DataSelect.vue', 'rules/accuracy/index.vue', 'rules/accuracy/Configuration.vue', 'rules/report/EvaluationDetail.vue', 'rules/task/index.vue']) {
   test(file + ' 页面模板及脚本可编译', () => { loadComponent('src/views/' + file) })
 }
+
+test('任务 Cron 生成器只接受六段，七段年份为 * 时自动截断', () => {
+  const { options } = loadComponent('src/views/rules/task/index.vue')
+  const vm = { form: { cronExpression: '' }, warnings: [], $message: { warning(msg) { vm.warnings.push(msg) } } }
+  options.methods.crontabFill.call(vm, '0 0 2 * * ? *')
+  assert.equal(vm.form.cronExpression, '0 0 2 * * ?')
+  options.methods.crontabFill.call(vm, '0 0 2 * * ? 2027')
+  assert.equal(vm.form.cronExpression, '0 0 2 * * ?')
+  assert.equal(vm.warnings.length, 1)
+})
+
+test('任务提交把内置数据源映射为 null，外部数据源提交数字ID', () => {
+  const { options } = loadComponent('src/views/rules/task/index.vue')
+  assert.equal(options.methods.payload.call({ form: { sourceKey: 'local', taskName: 't' } }).sourceId, null)
+  assert.equal(options.methods.payload.call({ form: { sourceKey: '12' } }).sourceId, 12)
+  assert.equal(Object.hasOwn(options.methods.payload.call({ form: { sourceKey: 'local' } }), 'sourceKey'), false)
+})
+
+test('任务运行状态文字与标签语义一致，未知状态不伪装成功', () => {
+  const { options } = loadComponent('src/views/rules/task/index.vue')
+  const vm = {}
+  for (const [status, text, type] of [['RUNNING', '运行中', 'warning'], ['SUCCESS', '成功', 'success'],
+    ['PARTIAL', '部分完成', 'warning'], ['NO_DATA', '无数据', 'info'], ['FAILED', '失败', 'danger'],
+    ['SKIPPED', '已跳过', 'info'], [undefined, '—', 'info']]) {
+    assert.equal(options.methods.runStatusText.call(vm, status), text)
+    assert.equal(options.methods.runStatusType.call(vm, status), type)
+  }
+})
 
 test('同表字段候选使用完整元数据且按类型过滤，组合字段按 JSON 数组读写', () => {
   const { options } = loadComponent('src/views/rules/accuracy/RuleSelect.vue')
