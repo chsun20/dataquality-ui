@@ -1,122 +1,98 @@
 <template>
   <div class="app-container">
-    <el-container>
-
-      <el-form>
-        <el-container>
-          <el-aside>
-            <el-tree ref="tableTree" :data="data" @node-click="handleNodeClick"
-                             :highlight-current="true"/>
-          </el-aside>
-
-          <el-main>
-            <el-table v-loading="loading" :data="hiveMetastoreList" @selection-change="handleSelectionChange">
-              <el-table-column type="selection"/>
-              <el-table-column label="字段名" prop="name"/>
-              <el-table-column label="类型" prop="type"/>
-              <el-table-column label="comment" prop="comment"/>
-            </el-table>
-          </el-main>
-        </el-container>
-      </el-form>
-
-      <el-footer style="margin-top: 80px">
-        <el-col :span="10" :offset="10">
-          <el-button @click="commitDataSelect" type="primary">下一步</el-button>
-        </el-col>
-      </el-footer>
-    </el-container>
+    <el-alert title="限量检测" description="默认扫描 1000 行，执行时最多 10000 行。有主键按主键排序，无主键时扫描范围不可稳定复现。唯一性仅对本次扫描有效，不提供尚未实现的过滤或分区功能。" :closable="false" />
+    <el-form inline style="margin-top: 18px">
+      <el-form-item label="数据源">
+        <el-select v-model="sourceKey" @change="changeSource" filterable>
+          <el-option label="内置本地数据源" value="local" />
+          <el-option v-for="s in sources" :key="s.id" :label="s.name + ' / ' + s.databaseName" :value="String(s.id)" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="数据表">
+        <el-select v-model="droolsRule.tableName" filterable remote :remote-method="searchTables" :loading="tablesLoading" @change="changeTable">
+          <el-option v-for="t in tables" :key="t.tableName" :label="t.tableName" :value="t.tableName" />
+        </el-select>
+        <span v-if="tableTotal > 100">共 {{ tableTotal }} 张表，请输入表名缩小范围</span>
+      </el-form-item>
+    </el-form>
+    <el-alert v-if="error" :title="error" type="error" :closable="false" />
+    <el-table ref="fields" v-loading="loading" :data="columns" row-key="name" @selection-change="handleSelectionChange">
+      <el-table-column type="selection" />
+      <el-table-column label="检测字段" prop="name" />
+      <el-table-column label="类型" prop="type" />
+      <el-table-column label="说明" prop="comment" />
+    </el-table>
+    <el-button style="margin-top: 20px" :disabled="loading || !columns.length" @click="commitDataSelect" type="primary">下一步</el-button>
   </div>
 </template>
 
 <script>
-import { listHiveMetastore, queryHiveMetastore } from '@/api/dqservice/hiveMetastore'
+import { sourceOptions, sourceTables, sourceColumns } from '@/api/dqservice/dataSource'
+import { checkPermi } from '@/utils/permission'
 
 export default {
-  name: "DataSelect",
-  props: {
-    droolsRule: {
-      type: Object,
-      default: {}
-    }
-  },
+  name: 'DataSelect',
+  props: { droolsRule: { type: Object, required: true } },
   data() {
-    return {
-      // 遮罩层
-      loading: true,
-      // showDataSelect: true,
-      // 数据源表格数据
-      hiveMetastoreList: [],
-      // 弹出层标题
-      title: "",
-      dbs: [],
-      tables: [],
-      data: [],
-      // 查询参数
-      queryParams: {
-        pageNum: 1,
-        pageSize: 10,
-        db: '',
-        table: ''
-      },
-      // 当前树形组件选择节点
-      currentTreeItem: null,
-      // 当前表格多选行列表,存的是列名
-      multipleSelection: [],
-    };
+    return { sourceKey: this.droolsRule.sourceId == null ? 'local' : String(this.droolsRule.sourceId),
+      sources: [], tables: [], columns: [], selected: [], loading: false, tablesLoading: false,
+      tableTotal: 0, tableRequest: 0, fieldRequest: 0, error: '' }
   },
   created() {
-    this.getList();
+    if (checkPermi(['dqservice:dataSource:use'])) sourceOptions().then(r => { this.sources = r.data || [] }).catch(() => {})
+    this.searchTables('')
+    if (this.droolsRule.tableName) this.loadColumns(true)
   },
+  beforeDestroy() { this.tableRequest++; this.fieldRequest++ },
   methods: {
-    // 获取数据源列表：数据库与表名，初始化树形组件
-    getList() {
-      this.loading = true;
-      listHiveMetastore().then(response => {
-        this.data = []
-        for(let value in response) {
-          if (response.hasOwnProperty(value)) {
-            let tmp = {label: value, children: []}
-            for(let item of response[value]){
-              tmp.children.push({ label: item.tableName })
-            }
-            this.data.push(tmp)
-          }
-        }
-        this.loading = false;
-      });
+    params() { return { sourceId: this.droolsRule.sourceId, databaseName: this.droolsRule.dbName || undefined } },
+    clearFields() {
+      this.fieldRequest++
+      this.columns = []; this.selected = []; this.loading = false; this.error = ''
+      this.$set(this.droolsRule, 'cols', [])
+      this.$set(this.droolsRule, 'allColumns', [])
     },
-    // 树形组件点击事件：1.重复点击无效 2.1级节点点击更新父组件的db属性 3.叶节点点击获取对应db.table的元数据并更新父组件的table属性
-    handleNodeClick(item, node) {
-      if(this.currentTreeItem === item) return
-      this.currentTreeItem = item
-      if(node.isLeaf) {
-        this.droolsRule.tableName = node.label
-        this.droolsRule.cols = []
-        this.queryParams.db = node.parent.label
-        this.queryParams.table = node.label
-        this.hiveMetastoreList = []
-        this.loading = true;
-        queryHiveMetastore(this.queryParams).then(response => {
-          this.hiveMetastoreList = response.sd.cols
-          this.loading = false;
-        });
-      }else {
-        this.droolsRule.dbName = node.label
-      }
+    changeSource() {
+      this.clearFields()
+      this.droolsRule.tableName = ''; this.droolsRule.dbName = ''
+      this.$set(this.droolsRule, 'sourceId', this.sourceKey === 'local' ? null : Number(this.sourceKey))
+      const source = this.sources.find(s => String(s.id) === this.sourceKey)
+      this.$set(this.droolsRule, 'sourceName', source ? source.name : '内置本地数据源')
+      if (source) this.droolsRule.dbName = source.databaseName
+      this.tables = []; this.searchTables('')
     },
-    // 多选表格选择事件，更新父组件cols属性
-    handleSelectionChange(val) {
-      this.multipleSelection = []
-      val.forEach(item => this.multipleSelection.push(item))
+    searchTables(search) {
+      const request = ++this.tableRequest
+      this.tablesLoading = true
+      return sourceTables({ ...this.params(), search, pageSize: 100 }).then(r => {
+        if (request !== this.tableRequest) return
+        this.tables = r.data.rows; this.tableTotal = Number(r.data.total)
+        this.droolsRule.dbName = r.data.databaseName
+      }).catch(() => { if (request === this.tableRequest) this.error = '表列表加载失败，请检查连接或重新选择数据源' })
+        .finally(() => { if (request === this.tableRequest) this.tablesLoading = false })
     },
-    // 下一步按钮，提交当前页面数据
+    changeTable() { this.clearFields(); this.loadColumns(false) },
+    loadColumns(restore) {
+      const request = ++this.fieldRequest
+      const previous = restore ? this.droolsRule.cols || [] : []
+      this.loading = true
+      return sourceColumns({ ...this.params(), tableName: this.droolsRule.tableName }).then(r => {
+        if (request !== this.fieldRequest) return
+        this.columns = r.data.columns || []
+        this.droolsRule.dbName = r.data.databaseName
+        this.$set(this.droolsRule, 'allColumns', this.columns)
+        this.$nextTick(() => {
+          if (request !== this.fieldRequest) return
+          this.columns.forEach(c => { if (previous.some(p => p.name === c.name)) this.$refs.fields.toggleRowSelection(c, true) })
+        })
+      }).catch(() => { if (request === this.fieldRequest) this.error = '字段加载失败，请重新选择数据表' })
+        .finally(() => { if (request === this.fieldRequest) this.loading = false })
+    },
+    handleSelectionChange(rows) { this.selected = rows },
     commitDataSelect() {
-      if(this.multipleSelection.length === 0) {
-        this.$message.error('请至少选择一个字段')
-        return
-      }
-      this.droolsRule.cols = this.multipleSelection
+      if (!this.selected.length) return this.$message.error('请至少选择一个检测字段')
+      const old = this.droolsRule.cols || []
+      this.droolsRule.cols = this.selected.map(c => ({ ...c, ...(old.find(p => p.name === c.name) || {}), type: c.type }))
       this.$emit('finish')
     }
   }

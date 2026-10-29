@@ -21,3 +21,7 @@ selenium-debug.log
 
 package-lock.json
 yarn.lock
+
+# 本地文档与 Qoder 产物
+docs/
+.qoder/

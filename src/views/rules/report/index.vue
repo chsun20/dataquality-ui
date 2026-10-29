@@ -23,16 +23,20 @@
       </el-form-item>
     </el-form>
 
+    <el-alert title="统计口径" :description="statisticsNote" type="info" :closable="false" show-icon class="statistics-note" />
+
     <el-table v-loading="loading" :data="reportList">
       <el-table-column label="批次" prop="executionId" width="70" align="center" />
       <el-table-column label="规则名称" prop="ruleName" :show-overflow-tooltip="true" />
+      <el-table-column label="数据源" prop="sourceName" min-width="120" show-overflow-tooltip />
+      <el-table-column label="评价状态" width="130"><template slot-scope="s">{{ evaluationText(s.row) }}</template></el-table-column>
       <el-table-column label="数据表" prop="tableName" width="130" align="center" />
-      <el-table-column label="扫描行数" prop="totalRows" width="90" align="center" />
+      <el-table-column label="实际扫描行数" prop="totalRows" width="110" align="center" />
       <el-table-column label="违规条数" prop="violationCount" width="90" align="center" />
-      <el-table-column label="命中行数" prop="violationRows" width="90" align="center" />
-      <el-table-column label="通过率" width="100" align="center">
+      <el-table-column label="违规行数" prop="violationRows" width="90" align="center" />
+      <el-table-column label="行通过率" width="140" align="center">
         <template slot-scope="scope">
-          <el-tag :type="rateTagType(scope.row.passRate)" size="small">{{ rateText(scope.row.passRate) }}%</el-tag>
+          <el-tag :type="rateTagType(scope.row)" size="small">{{ rateText(scope.row) }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="耗时" width="90" align="center">
@@ -69,9 +73,10 @@
           <span>执行时间：{{ parseTime(detail.createTime) }}</span>
         </div>
 
+        <EvaluationDetail v-if="!detailLoading" :record="detail" />
         <div class="summary-cards">
           <div class="summary-card">
-            <div class="summary-label">扫描行数</div>
+            <div class="summary-label">实际扫描行数</div>
             <div class="summary-value">{{ detail.totalRows }}</div>
           </div>
           <div class="summary-card">
@@ -79,13 +84,13 @@
             <div class="summary-value danger">{{ detail.violationCount }}</div>
           </div>
           <div class="summary-card">
-            <div class="summary-label">命中行数</div>
+            <div class="summary-label">违规行数</div>
             <div class="summary-value danger">{{ detail.violationRows }}</div>
           </div>
           <div class="summary-card">
-            <div class="summary-label">通过率</div>
+            <div class="summary-label">行通过率</div>
             <div class="summary-value">
-              <el-tag :type="rateTagType(detail.passRate)" size="medium">{{ rateText(detail.passRate) }}%</el-tag>
+              <el-tag :type="rateTagType(detail)" size="medium">{{ rateText(detail) }}</el-tag>
             </div>
           </div>
           <div class="summary-card">
@@ -94,8 +99,10 @@
           </div>
         </div>
 
+        <el-alert title="统计口径" :description="statisticsNote" type="info" :closable="false" show-icon class="statistics-note" />
+
         <div class="detail-section">
-          <span class="detail-section-title">字段违规分布：</span>
+          <span class="detail-section-title">字段违规分布（按条数）：</span>
           <el-tag
             v-for="item in detail.fieldStats"
             :key="item.field"
@@ -105,7 +112,7 @@
           >
             {{ item.field }} · {{ item.count }} 条
           </el-tag>
-          <span v-if="!detail.fieldStats || detail.fieldStats.length === 0" class="empty-tip">本次执行未发现违规</span>
+          <span v-if="!detail.fieldStats || detail.fieldStats.length === 0" class="empty-tip">{{ emptyViolationText(detail) }}</span>
         </div>
 
         <el-table :data="detail.violations" size="mini" border max-height="380">
@@ -113,10 +120,12 @@
           <el-table-column label="记录ID" prop="recordId" width="90" align="center" />
           <el-table-column label="违规字段" prop="fieldName" width="150" />
           <el-table-column label="命中规则" prop="ruleName" :show-overflow-tooltip="true" />
+          <el-table-column label="原因" prop="reason" min-width="140" />
+          <el-table-column label="对比值"><template slot-scope="s">{{ fieldValueText(s.row.comparisonValue) }}</template></el-table-column>
+          <el-table-column label="涉及字段"><template slot-scope="s">{{ s.row.involvedFields || '历史未记录' }}</template></el-table-column>
           <el-table-column label="字段值" width="120" align="center">
             <template slot-scope="scope">
-              <el-tag v-if="scope.row.fieldValue === null || scope.row.fieldValue === ''" type="info" size="mini">NULL</el-tag>
-              <span v-else>{{ scope.row.fieldValue }}</span>
+              <span>{{ fieldValueText(scope.row.fieldValue) }}</span>
             </template>
           </el-table-column>
         </el-table>
@@ -130,9 +139,13 @@
 
 <script>
 import { listReport, getReport } from '@/api/dqservice/report'
+import { QUALITY_STATISTICS_NOTE, rateText, rateTagType, fieldValueText, emptyViolationText, evaluationText } from '@/utils/quality'
+import EvaluationDetail from './EvaluationDetail'
 
 export default {
   name: 'QualityReport',
+  components: { EvaluationDetail },
+  activated() { this.getList() },
   data() {
     return {
       // 遮罩层
@@ -153,13 +166,19 @@ export default {
       // 详情弹窗
       detailOpen: false,
       detailLoading: false,
-      detail: { violations: [], fieldStats: [] }
+      detail: { violations: [], fieldStats: [] },
+      statisticsNote: QUALITY_STATISTICS_NOTE
     }
   },
   created() {
     this.getList()
   },
   methods: {
+    evaluationText,
+    rateText,
+    rateTagType,
+    fieldValueText,
+    emptyViolationText,
     /** 查询质量报告列表 */
     getList() {
       this.loading = true
@@ -192,27 +211,15 @@ export default {
       }).catch(() => {
         this.detailLoading = false
       })
-    },
-    /** 通过率文本 */
-    rateText(rate) {
-      return Number(rate || 0).toFixed(1)
-    },
-    /** 通过率标签颜色 */
-    rateTagType(rate) {
-      const value = Number(rate || 0)
-      if (value >= 90) {
-        return 'success'
-      }
-      if (value >= 60) {
-        return 'warning'
-      }
-      return 'danger'
     }
   }
 }
 </script>
 
 <style scoped>
+.statistics-note {
+  margin-bottom: 16px;
+}
 .detail-meta {
   color: #606266;
   font-size: 13px;

@@ -1,14 +1,9 @@
 <template>
 <div>
-  <el-form :model="droolsRule" :rules="rules" :label-position="'right'">
+  <el-form ref="configuration" :model="droolsRule" :rules="rules" :label-position="'right'">
     <el-form-item label="规则名称" prop="ruleName">
       <el-col :span="8">
-        <el-input v-model="droolsRule.ruleName" placeholder="只支持英文与数字"/>
-      </el-col>
-    </el-form-item>
-    <el-form-item label="规则描述">
-      <el-col :span="8">
-        <el-input v-model="droolsRule.ruleDescription" placeholder="请输入规则描述"/>
+        <el-input v-model="droolsRule.ruleName" maxlength="100" placeholder="请输入规则名称"/>
       </el-col>
     </el-form-item>
     <el-form-item label="规则类型">
@@ -18,7 +13,7 @@
     </el-form-item>
     <el-form-item label="数据源">
       <el-col :span="8">
-        <el-input v-model="droolsRule.tableName" :disabled="true"/>
+        <span>{{ droolsRule.sourceName || '内置本地数据源' }} / {{ droolsRule.dbName }}.{{ droolsRule.tableName }}</span>
       </el-col>
     </el-form-item>
     <el-form-item label="创建者">
@@ -27,9 +22,9 @@
       </el-col>
     </el-form-item>
     <el-form-item>
-      <el-button @click="back">上一步</el-button>
-      <el-button :loading="drlLoading" @click="previewDrl">预览 DRL</el-button>
-      <el-button type="primary" @click="commitConfiguration">提交</el-button>
+      <el-button :disabled="submitting" @click="back">上一步</el-button>
+      <el-button :loading="drlLoading" :disabled="submitting" @click="previewDrl">预览 DRL</el-button>
+      <el-button type="primary" :loading="submitting" :disabled="drlLoading" @click="commitConfiguration">提交</el-button>
     </el-form-item>
   </el-form>
 
@@ -45,6 +40,7 @@ import { listRuleTemplate, previewRuleTemplate } from '@/api/dqservice/ruleTempl
 export default {
   name: 'Configuration',
   props: {
+    submitting: { type: Boolean, default: false },
     droolsRule: {
       type: Object,
       default: {}
@@ -101,7 +97,8 @@ export default {
       })
     },
     commitConfiguration() {
-      this.$emit('finish')
+      if (this.submitting) return
+      this.$refs.configuration.validate(valid => { if (valid) this.$emit('finish') })
     },
     back() {
       this.$emit('back')

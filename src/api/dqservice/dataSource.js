@@ -1,5 +1,12 @@
 import request from '@/utils/request'
 
+export const sourceOptions = () => request({ url: '/dqservice/dataSource/options', method: 'get' })
+export const sourceTables = params => request({ url: '/dqservice/dataSource/tables', method: 'get', params, timeout: 65000 })
+export const sourceColumns = params => request({ url: '/dqservice/dataSource/columns', method: 'get', params, timeout: 65000 })
+export const sourcePreview = params => request({ url: '/dqservice/dataSource/preview', method: 'get', params, timeout: 65000 })
+export const testSource = data => request({ url: '/dqservice/dataSource/test', method: 'post', data, timeout: 65000 })
+export const testSavedSource = id => request({ url: `/dqservice/dataSource/${id}/test`, method: 'post', timeout: 65000 })
+
 // 查询dataSource列表
 export function listDataSource(query) {
   return request({

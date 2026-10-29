@@ -71,6 +71,7 @@
           icon="el-icon-plus"
           size="mini"
           @click="handleAdd"
+          v-if="checkPermi(['dqservice:rule:custom'])"
           v-hasPermi="['dqservice:rule:add']"
         >新增自定义规则</el-button>
       </el-col>
@@ -124,6 +125,10 @@
       <el-table-column label="规则id" align="center" prop="ruleId" width="60" />
       <el-table-column label="规则名称" align="center" prop="ruleName" min-width="150" show-overflow-tooltip />
       <el-table-column label="规则类型" align="center" prop="typeName" width="110" />
+      <el-table-column label="数据源" min-width="140" show-overflow-tooltip><template slot-scope="s">{{ s.row.sourceName || (s.row.sourceId ? '外部连接 #' + s.row.sourceId : '内置本地数据源') }}</template></el-table-column>
+      <el-table-column label="配置维度" align="center" min-width="170" show-overflow-tooltip>
+        <template slot-scope="scope">{{ dimensionsText(scope.row.qualityDimensions) }}</template>
+      </el-table-column>
       <el-table-column label="用户id" align="center" prop="userId" width="80" />
       <el-table-column label="用户名" align="center" prop="userName" width="110" show-overflow-tooltip />
       <el-table-column label="创建时间" align="center" prop="createTime" width="100">
@@ -142,6 +147,7 @@
             size="mini"
             type="text"
             icon="el-icon-video-play"
+            v-hasPermi="['dqservice:rule:execute']"
             @click="handleExecute(scope.row)"
           >执行</el-button>
           <el-button
@@ -156,7 +162,7 @@
             icon="el-icon-edit"
             @click="handleUpdate(scope.row)"
             v-hasPermi="['dqservice:rule:edit']"
-          >修改</el-button>
+          >{{ scope.row.templateParams ? '编辑参数' : '修改 DRL' }}</el-button>
           <el-button
             size="mini"
             type="text"
@@ -198,6 +204,7 @@
           <el-input v-model="customForm.ruleBody" type="textarea" :rows="16" class="drl-editor"
                     placeholder="请输入 rule ... end 主体部分" />
           <div class="form-tip">只需编写 rule ... end 主体，package / import / global 由系统自动补全；then 中需通过 violations.add(...) 写出违规记录。</div>
+          <div class="form-tip">违规记录的 rowId 必须取自当前数据行的 __rowId 字段；自定义规则不自动归入质量维度。</div>
         </el-form-item>
       </el-form>
       <div slot="footer" class="dialog-footer">
@@ -235,13 +242,20 @@
         <el-descriptions-item label="规则id">{{ detailRule.ruleId || '-' }}</el-descriptions-item>
         <el-descriptions-item label="规则名称">{{ detailRule.ruleName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="规则类型">{{ detailRule.typeName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="数据源">{{ detailRule.sourceName || '内置本地数据源' }}</el-descriptions-item>
+        <el-descriptions-item label="配置维度">{{ dimensionsText(detailRule.qualityDimensions) }}</el-descriptions-item>
         <el-descriptions-item label="检测字段">{{ detailRule.columnName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="数据库名">{{ detailRule.dbName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="表名">{{ detailRule.tableName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ parseTime(detailRule.createTime, '{y}-{m}-{d} {h}:{i}') }}</el-descriptions-item>
         <el-descriptions-item label="更新时间">{{ parseTime(detailRule.updateTime, '{y}-{m}-{d} {h}:{i}') }}</el-descriptions-item>
       </el-descriptions>
-      <div class="drl-detail-title">规则内容（DRL 主体）</div>
+      <div class="form-tip">质量维度由模板配置识别；自定义或无法识别的规则显示“未分类”，不代表没有违规。</div>
+      <el-table v-if="detailRule.templateParams" :data="parseQualityJson(detailRule.templateParams, [])" size="mini" border>
+        <el-table-column prop="field" label="字段" /><el-table-column prop="template" label="模板编码" />
+        <el-table-column label="参数与参考依据"><template slot-scope="s">{{ JSON.stringify(s.row.params) }}</template></el-table-column>
+      </el-table>
+      <div class="drl-detail-title">规则内容（只读 DRL 预览）</div>
       <pre class="drl-pre">{{ detailRule.ruleBody }}</pre>
       <div slot="footer" class="dialog-footer">
         <el-button @click="detailOpen = false">关 闭</el-button>
@@ -255,8 +269,8 @@
           <span>规则：{{ execResult.ruleName }}</span>
           <span>数据表：{{ (execResult.dbName ? execResult.dbName + '.' : '') + (execResult.tableName || '-') }}</span>
           <span class="exec-limit">
-            扫描行数：
-            <el-select v-model="execLimit" size="mini" style="width: 110px" @change="runExecute">
+            最多扫描：
+            <el-select v-model="execLimit" :disabled="execLoading" size="mini" style="width: 110px" @change="runExecute">
               <el-option :value="100" label="100 行" />
               <el-option :value="1000" label="1000 行" />
               <el-option :value="5000" label="5000 行" />
@@ -265,9 +279,10 @@
           </span>
         </div>
 
+        <EvaluationDetail v-if="!execLoading" :record="execResult" />
         <div class="exec-summary">
           <div class="exec-card">
-            <div class="exec-label">扫描行数</div>
+            <div class="exec-label">实际扫描行数</div>
             <div class="exec-value">{{ execResult.totalRows || 0 }}</div>
           </div>
           <div class="exec-card">
@@ -275,19 +290,21 @@
             <div class="exec-value exec-danger">{{ execResult.violationCount || 0 }}</div>
           </div>
           <div class="exec-card">
-            <div class="exec-label">命中行数</div>
+            <div class="exec-label">违规行数</div>
             <div class="exec-value">{{ execResult.violationRows || 0 }}</div>
           </div>
           <div class="exec-card">
-            <div class="exec-label">通过率</div>
+            <div class="exec-label">行通过率</div>
             <div class="exec-value">
-              <el-tag :type="passRateTagType" size="medium">{{ passRateText }}%</el-tag>
+              <el-tag :type="passRateTagType" size="medium">{{ passRateText }}</el-tag>
             </div>
           </div>
         </div>
 
+        <el-alert title="统计口径" :description="statisticsNote" type="info" :closable="false" show-icon class="statistics-note" />
+
         <div class="exec-section">
-          <span class="exec-section-title">字段违规分布：</span>
+          <span class="exec-section-title">字段违规分布（按条数）：</span>
           <el-tag
             v-for="item in execResult.fieldStats"
             :key="item.field"
@@ -295,7 +312,7 @@
             size="small"
             class="exec-field-tag"
           >{{ item.field }} · {{ item.count }} 条</el-tag>
-          <span v-if="!execResult.fieldStats || execResult.fieldStats.length === 0" class="exec-empty">无违规字段</span>
+          <span v-if="!execResult.fieldStats || execResult.fieldStats.length === 0" class="exec-empty">{{ emptyViolationText(execResult) }}</span>
         </div>
 
         <div class="exec-section-title exec-detail-title">违规明细（{{ execResult.violationCount || 0 }} 条）</div>
@@ -304,7 +321,7 @@
             <template slot-scope="props">
               <el-form label-position="left" inline class="exec-row-detail">
                 <el-form-item v-for="(value, key) in props.row.row" :key="key" :label="key">
-                  <span>{{ value === null ? 'NULL' : value }}</span>
+                  <span>{{ fieldValueText(value) }}</span>
                 </el-form-item>
               </el-form>
             </template>
@@ -315,11 +332,11 @@
           </el-table-column>
           <el-table-column label="违规字段" prop="field" width="160" align="center" />
           <el-table-column label="命中规则" prop="rule" align="center" />
+          <el-table-column label="原因" prop="reason" min-width="150" />
+          <el-table-column label="对比值" min-width="100"><template slot-scope="s">{{ fieldValueText(s.row.comparisonValue) }}</template></el-table-column>
           <el-table-column label="字段值" width="110" align="center">
             <template slot-scope="scope">
-              <el-tag type="danger" size="mini"
-                      v-if="scope.row.row && scope.row.row[scope.row.field] === null">NULL</el-tag>
-              <span v-else>{{ scope.row.row ? scope.row.row[scope.row.field] : '' }}</span>
+              <span>{{ fieldValueText(scope.row.row ? scope.row.row[scope.row.field] : undefined) }}</span>
             </template>
           </el-table-column>
         </el-table>
@@ -333,9 +350,14 @@
 
 <script>
 import { listRule, getRule, delRule, addRule, updateRule, executeRule, validateRule } from "@/api/dqservice/rule";
+import { QUALITY_STATISTICS_NOTE, rateText, rateTagType, fieldValueText, dimensionsText, emptyViolationText, parseQualityJson } from '@/utils/quality'
+import EvaluationDetail from './report/EvaluationDetail'
+import { checkPermi } from '@/utils/permission'
 
 export default {
   name: "Rule",
+  components: { EvaluationDetail },
+  activated() { this.getList() },
   data() {
     return {
       // 遮罩层
@@ -381,6 +403,7 @@ export default {
       execRuleId: null,
       execLimit: 1000,
       execResult: { violations: [], fieldStats: [] },
+      statisticsNote: QUALITY_STATISTICS_NOTE,
       // 查询参数
       queryParams: {
         pageNum: 1,
@@ -394,19 +417,21 @@ export default {
   },
   computed: {
     passRateText() {
-      return Number(this.execResult.passRate || 0).toFixed(1)
+      return rateText(this.execResult)
     },
     passRateTagType() {
-      const rate = Number(this.execResult.passRate || 0)
-      if (rate >= 90) return 'success'
-      if (rate >= 60) return 'warning'
-      return 'danger'
+      return rateTagType(this.execResult)
     }
   },
   created() {
     this.getList();
   },
   methods: {
+    checkPermi,
+    parseQualityJson,
+    fieldValueText,
+    dimensionsText,
+    emptyViolationText,
     /** 查询规则列表 */
     getList() {
       this.loading = true;
@@ -458,12 +483,13 @@ export default {
     },
     /** 按当前扫描行数执行（切换行数时也会重跑） */
     runExecute() {
-      if (!this.execRuleId) return
+      if (!this.execRuleId || this.execLoading) return
       this.execLoading = true
       executeRule(this.execRuleId, { limit: this.execLimit }).then(response => {
         this.execResult = response.data
         this.execLoading = false
       }).catch(() => {
+        this.execResult = { evaluationStatus: 'REQUEST_ERROR', errorMessage: '执行请求未成功返回，请在历史报告确认是否已生成批次后再重试。', violations: [], fieldStats: [] }
         this.execLoading = false
       })
     },
@@ -480,9 +506,14 @@ export default {
     },
     /** 修改：只回显 DRL 主体，不重建规则 */
     handleUpdate(row) {
-      const ruleId = row.ruleId || this.ids
+      const ruleId = (row && row.ruleId) || this.ids[0]
       getRule(ruleId).then(response => {
         const rule = response.data || {};
+        if (rule.templateParams && rule.templateCode !== 'custom') {
+          this.$router.push({ path: '/dq/ruleMaking', query: { ruleId: rule.ruleId } })
+          return
+        }
+        if (!checkPermi(['dqservice:rule:custom'])) return this.$message.error('自定义 DRL 仅允许可信管理员编辑')
         this.editForm = {
           ruleId: rule.ruleId,
           ruleName: rule.ruleName,
@@ -580,6 +611,9 @@ export default {
 </script>
 
 <style scoped>
+.statistics-note {
+  margin-bottom: 16px;
+}
 .form-tip {
   font-size: 12px;
   color: #909399;

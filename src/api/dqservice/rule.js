@@ -21,6 +21,7 @@ export function getRule(ruleId) {
 export function addRule(data) {
   return request({
     url: '/dqservice/rule',
+    timeout: 75000,
     method: 'post',
     data: data
   })
@@ -30,6 +31,7 @@ export function addRule(data) {
 export function updateRule(data) {
   return request({
     url: '/dqservice/rule',
+    timeout: 75000,
     method: 'put',
     data: data
   })
@@ -56,6 +58,7 @@ export function delRule(ruleId) {
 export function executeRule(ruleId, params) {
   return request({
     url: '/dqservice/execute/' + ruleId,
+    timeout: 90000,
     method: 'post',
     params: params
   })

@@ -5,17 +5,15 @@
       <el-steps :active="active" finish-status="success">
         <el-step title="选择数据源"/>
         <el-step title="选择规则"/>
-        <el-step title="选择分区"/>
         <el-step title="命名"/>
       </el-steps>
     </el-header>
     <el-main>
-      <el-card>
+      <el-alert v-if="loadError" title="规则加载失败，未进入编辑。请返回规则列表重试。" type="error" :closable="false" />
+      <el-card v-if="ready" :key="wizardKey" v-loading="submitting">
         <DataSelect v-show="showDataSelect" :droolsRule="droolsRule" @finish="finishDataSelect"/>
         <RuleSelect v-if="showRuleSelect" :droolsRule="droolsRule" @finish="finishRuleSelect" @back="backRuleSelect"/>
-        <PartitionConfiguration v-if="showPartitionConfiguration" :droolsRule="droolsRule"
-                                @finish="finishPartitionConfiguration" @back="backPartitionConfiguration"/>
-        <Configuration v-if="showConfiguration" :droolsRule="droolsRule" @finish="commit" @back="backConfiguration"/>
+        <Configuration v-if="showConfiguration" :droolsRule="droolsRule" :submitting="submitting" @finish="commit" @back="backConfiguration"/>
       </el-card>
     </el-main>
   </el-container>
@@ -25,77 +23,84 @@
 <script>
 import DataSelect from '@/views/rules/accuracy/DataSelect'
 import RuleSelect from '@/views/rules/accuracy/RuleSelect'
-import PartitionConfiguration from '@/views/rules/accuracy/PartitionConfiguration'
 import Configuration from '@/views/rules/accuracy/Configuration'
-import { addRule } from '@/api/dqservice/rule'
+import { addRule, updateRule, getRule } from '@/api/dqservice/rule'
 export default {
   name: 'index',
-  components: { RuleSelect, DataSelect, PartitionConfiguration, Configuration},
+  components: { RuleSelect, DataSelect, Configuration },
   data() {
     return {
-      active: 0,
+      active: 0, ready: false, loadError: false, submitting: false, wizardKey: 0,
       droolsRule: {
         ruleName: '',
-        ruleDescription: '',
         userName: '',
         typeName: '',
         typeCode: 0,
         cols: [],
         dbName: '',
         tableName: '',
-        sourceWhere: '',
-        sourcePartitionNumber: 0,
-        sourcePartitionUnit: '',
-        sourceTimeZone: ''
+        sourceId: null,
+        sourceName: '内置本地数据源',
+        allColumns: []
       },
       showDataSelect: true,
       showRuleSelect: false,
-      showPartitionConfiguration: false,
       showConfiguration: false
     }
   },
+  watch: {
+    '$route.query.ruleId': { immediate: true, handler(id) { this.loadRule(id) } }
+  },
   methods: {
+    loadRule(id) {
+      const key = ++this.wizardKey
+      this.ready = false; this.loadError = false; this.active = 0
+      this.showDataSelect = true; this.showRuleSelect = false; this.showConfiguration = false
+      if (!id) {
+        this.droolsRule = { ruleName: '', cols: [], allColumns: [], sourceId: null,
+          sourceName: '内置本地数据源', dbName: '', tableName: '', typeName: '' }
+        this.ready = true
+        return
+      }
+      getRule(id).then(r => {
+        if (key !== this.wizardKey) return
+        this.droolsRule = { ...r.data, allColumns: [] }
+        this.ready = true
+      }).catch(() => { if (key === this.wizardKey) this.loadError = true })
+    },
     finishDataSelect() {
       this.active = 1
       this.showDataSelect = false
       this.showRuleSelect = true
-      console.log('完成第一步：数据源选择')
-      console.log(this.droolsRule)
     },
     finishRuleSelect() {
       this.active = 2
       this.showRuleSelect = false
-      this.showPartitionConfiguration = true
-      console.log('完成第二步：规则选择')
-      console.log(this.droolsRule)
+      this.showConfiguration = true
     },
     backRuleSelect() {
-      this.active = 1
+      this.active = 0
       this.showRuleSelect = false
       this.showDataSelect = true
     },
-    finishPartitionConfiguration() {
-      this.active = 3
-      this.showPartitionConfiguration = false
-      this.showConfiguration = true
-      console.log('完成第三步：分区配置')
-      console.log(this.droolsRule)
-    },
-    backPartitionConfiguration() {
-      this.active = 2
-      this.showPartitionConfiguration = false
+    backConfiguration() {
+      if (this.submitting) return
+      this.active = 1
+      this.showConfiguration = false
       this.showRuleSelect = true
     },
-    backConfiguration() {
-      this.active = 3
-      this.showConfiguration = false
-      this.showPartitionConfiguration = true
-    },
     commit() {
-      this.active = 4
-      console.log('完成第四步：规则配置')
-      console.log(this.droolsRule)
-      addRule(this.droolsRule)
+      if (this.submitting) return
+      this.submitting = true
+      const payload = { ruleId: this.droolsRule.ruleId, ruleName: this.droolsRule.ruleName,
+        sourceId: this.droolsRule.sourceId, dbName: this.droolsRule.dbName, tableName: this.droolsRule.tableName,
+        cols: this.droolsRule.cols }
+      const save = payload.ruleId ? updateRule : addRule
+      save(payload).then(() => {
+        this.active = 3
+        this.$message.success('规则参数已保存')
+        this.$router.push('/dq/rule')
+      }).catch(() => {}).finally(() => { this.submitting = false })
     }
   }
 }
