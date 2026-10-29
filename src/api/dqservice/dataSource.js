@@ -16,14 +16,6 @@ export function listDataSource(query) {
   })
 }
 
-// 查询dataSource详细
-export function getDataSource(id) {
-  return request({
-    url: '/dqservice/dataSource/' + id,
-    method: 'get'
-  })
-}
-
 // 新增dataSource
 export function addDataSource(data) {
   return request({
